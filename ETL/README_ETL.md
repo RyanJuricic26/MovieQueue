@@ -29,7 +29,7 @@ This ETL script loads movie, people, and relationship data into the MovieQueue N
 
 ```bash
 # From the project root directory
-python -m ETL.etl_full
+python -m ETL.MovieQueueETL
 ```
 
 ---
