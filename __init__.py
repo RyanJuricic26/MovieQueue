@@ -1,0 +1,1 @@
+# Makes MovieQueue a Python package

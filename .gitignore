@@ -1,0 +1,17 @@
+# Virtual environment
+.venv/
+__pycache__/
+*.pyc
+
+# Secrets
+.env
+
+# Data / Archive Files
+ETL/ARCHIVE
+Data/
+
+# Streamlit stuff
+.streamlit/
+
+# OS files
+.DS_Store

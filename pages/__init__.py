@@ -1,0 +1,1 @@
+# Makes pages a subpackage of MovieQueue
