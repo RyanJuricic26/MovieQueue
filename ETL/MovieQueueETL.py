@@ -166,10 +166,10 @@ def upload_relationships():
 # PIPELINE
 # ==============================
 if __name__ == "__main__":
-    df_movies = filter_top_movies("Data/Raw Data/title.basics.tsv", "Data/Raw Data/title.ratings.tsv")
+    df_movies = filter_top_movies(MOVIE_DATA_PATH, RATINGS_DATA_PATH)
     upload_movies(df_movies)
 
-    df_people, df_principals = filter_people("Data/Raw Data/name.basics.tsv", "Data/Raw Data/title.principals.tsv", df_movies['tconst'].unique())
+    df_people, df_principals = filter_people(PEOPLE_DATA_PATH, PRINCIPALS_DATA_PATH, df_movies['tconst'].unique())
     upload_people(df_people)
 
     build_relationship_csvs(df_principals)

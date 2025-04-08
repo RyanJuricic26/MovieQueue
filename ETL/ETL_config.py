@@ -6,7 +6,7 @@
 BATCH_SIZE = 100
 
 # Top-K movies to select per genre
-TOP_K = 1000
+TOP_K = 250
 
 # Input file paths
 MOVIE_DATA_PATH = "Data/Raw Data/title.basics.tsv"
