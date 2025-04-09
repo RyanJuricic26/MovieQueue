@@ -48,7 +48,7 @@ The IMDb datasets power MovieQueue’s:
 
 - 🎯 Movie recommendation engine
 - ⭐ Rating and filtering system
-- 🧑 Actor and director relationship graphs
+- 🧑 People -> Movie relationships
 - 📊 Analytics and personalization features
 
 ---
