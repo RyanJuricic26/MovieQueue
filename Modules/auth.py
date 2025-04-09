@@ -39,35 +39,6 @@ def init_session_state():
     if "username" not in st.session_state:
         st.session_state.username = ""
 
-# def show_login():
-
-#     db = Connect()
-
-#     st.header("Login / Register")
-
-#     choice = st.radio("Choose", ["Login", "Register"], key="auth_choice")
-
-#     username = st.text_input("Username", key="auth_username")
-#     password = st.text_input("Password", type="password", key="auth_password")
-
-#     if choice == "Register":
-#         if st.button("Create Account"):
-#             if not user_exists(username, db):
-#                 create_user(username, password, db)
-#                 st.success("Account created! Please login.")
-#             else:
-#                 st.warning("Username already exists.")
-
-#     if choice == "Login":
-#         if st.button("Login"):
-#             if verify_user(username, password, db):
-#                 st.session_state.logged_in = True
-#                 st.session_state.username = username
-#                 st.success("You are now logged in! Use the sidebar to navigate.")
-#                 st.rerun()
-#             else:
-#                 st.error("Invalid credentials.")
-
 def show_login():
 
     db = Connect()
