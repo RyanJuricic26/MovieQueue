@@ -18,13 +18,13 @@ def show():
 
     genre_query = """
     MATCH (g:Genre)
-    RETURN DISTINCT g.name AS name
-    ORDER BY name
+    RETURN DISTINCT g.type AS type
+    ORDER BY type
     """
     db = Connect()
 
     genre_results = db.run_query(genre_query)
-    genre_list = [g["name"] for g in genre_results]
+    genre_list = [g["type"] for g in genre_results]
 
     selected_genres = st.multiselect("🎯 Select Genres to Include in Recommendations:", genre_list)
 

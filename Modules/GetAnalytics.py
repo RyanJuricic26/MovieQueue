@@ -11,7 +11,7 @@ def get_analytics(user):
         "total_ratings": "MATCH (u:User {username: $user})-[:RATED]->(m:Movie) RETURN count(*) AS total_ratings",
         "avg_rating": "MATCH (u:User {username: $user})-[r:RATED]->(m:Movie) RETURN avg(r.rating) AS avg_rating",
         "rating_dist": "MATCH (u:User {username: $user})-[r:RATED]->(m:Movie) RETURN r.rating AS rating, count(*) AS count ORDER BY rating",
-        "genre_dist": "MATCH (u:User {username: $user})-[r:RATED]->(m:Movie)-[:HAS_GENRE]->(g:Genre) RETURN g.name AS genre, count(*) AS count, avg(r.rating) AS avg_rating ORDER BY count DESC"
+        "genre_dist": "MATCH (u:User {username: $user})-[r:RATED]->(m:Movie)-[:HAS_GENRE]->(g:Genre) RETURN g.type AS genre, count(*) AS count, avg(r.rating) AS avg_rating ORDER BY count DESC"
     }
 
     results = {key: db.run_query(query, params) for key, query in queries.items()}

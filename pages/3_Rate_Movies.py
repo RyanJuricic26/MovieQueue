@@ -35,8 +35,8 @@ def show():
     movie_query = """
     MATCH (m:Movie)
     OPTIONAL MATCH (m)-[:HAS_GENRE]->(g:Genre)
-    WITH m, collect(DISTINCT g.name) AS genres
-    RETURN m.id AS id, m.primaryTitle AS title, m.startYear AS year, m.runtimeMinutes AS runtime, m.averageRating AS rating, genres
+    WITH m, collect(DISTINCT g.type) AS genres
+    RETURN m.tconst AS tconst, m.primaryTitle AS title, m.startYear AS year, m.runtimeMinutes AS runtime, m.averageRating AS rating, genres
     ORDER BY m.primaryTitle
     """
 
@@ -53,7 +53,7 @@ def show():
         with st.container():
             st.markdown("---")
             st.subheader(f"{movie['title']} ({movie['year']})")
-            st.markdown(f"**Runtime:** {movie['runtime']} mins | **Avg Rating:** {movie['rating']}/10")
+            st.markdown(f"**Runtime:** {movie['runtime']} mins | **Avg Rating:** {round(movie['rating'], 2)}/10")
             genre_tags = " ".join([
                 f"<span style='background:#FF5C5C; color:white; padding:4px 8px; border-radius:8px; font-size:0.8em; margin-right:5px;'>{g}</span>"
                 for g in movie['genres']
@@ -61,8 +61,8 @@ def show():
             st.markdown(f"Genres: {genre_tags}", unsafe_allow_html=True)
 
             # Check if user already rated this
-            existing_rating_query = "MATCH (u:User {username: $user})-[r:RATED]->(m:Movie {id: $id}) RETURN r.rating AS rating"
-            existing = db.run_query(existing_rating_query, {"user": st.session_state.username, "id": movie['id']})
+            existing_rating_query = "MATCH (u:User {username: $user})-[r:RATED]->(m:Movie {tconst: $tconst}) RETURN r.rating AS rating"
+            existing = db.run_query(existing_rating_query, {"user": st.session_state.username, "tconst": movie['tconst']})
 
             if existing:
                 st.warning(f"You have already rated this movie: {existing[0]['rating']}/10")
@@ -83,7 +83,7 @@ def show():
                 db.run_query("""
                     MERGE (u:User {username: $user})
                     WITH u
-                    MATCH (m:Movie {id: $id})
+                    MATCH (m:Movie {tconst: $tconst})
                     MERGE (u)-[r:RATED]->(m)
                     SET r.rating = $rating,
                         r.discovery = $discovery,
@@ -91,7 +91,7 @@ def show():
                         r.time = time($time)
                     """, {
                         "user": st.session_state.username,
-                        "id": movie['id'],
+                        "tconst": movie['tconst'],
                         "rating": rating,
                         "discovery": discovery,
                         "date": watch_date.isoformat(),

@@ -24,9 +24,10 @@ def get_recommendations(user, genres):
 
     // Collect user collaborators separately
     OPTIONAL MATCH (m)<-[:ACTED_IN]-(ua:Person)
-    OPTIONAL MATCH (m)<-[:RELATES_TO {type:'DIRECTED'}]-(ud:Person)
-    OPTIONAL MATCH (m)<-[:RELATES_TO {type:'COMPOSED_MUSIC_FOR'}]-(uc:Person)
-    OPTIONAL MATCH (m)<-[uo_rel:RELATES_TO]-(uo:Person)
+    OPTIONAL MATCH (m)<-[:DIRECTED]-(ud:Person)
+    OPTIONAL MATCH (m)<-[:COMPOSED_SCORE_FOR]-(uc:Person)
+    OPTIONAL MATCH (m)<-[rel]-(uo:Person)
+    WHERE type(rel) IN ['PRODUCED', 'EDITED', 'SHOT', 'CAST', 'DESIGNED_PRODUCTION', 'ANIMATED', 'WROTE']
 
     // Separate collections
     WITH u, 
@@ -34,11 +35,11 @@ def get_recommendations(user, genres):
         COLLECT(DISTINCT ud) AS user_directors,
         COLLECT(DISTINCT uc) AS user_composers,
         COLLECT(DISTINCT uo) AS user_other_people,
-        COLLECT(DISTINCT uo_rel.type) AS user_other_roles
+        COLLECT(DISTINCT type(rel)) AS user_other_roles
 
     // Candidate recommended movies
     MATCH (rec:Movie)-[:HAS_GENRE]->(g2:Genre)
-    WHERE g2.name IN $genres
+    WHERE g2.type IN $genres
     AND NOT EXISTS {
         MATCH (u)-[:RATED]->(rec)
     }
@@ -51,24 +52,24 @@ def get_recommendations(user, genres):
     WHERE a IN user_actors
 
     // Shared directors
-    OPTIONAL MATCH (rec)<-[:RELATES_TO {type:'DIRECTED'}]-(d)
+    OPTIONAL MATCH (rec)<-[:DIRECTED]-(d)
     WHERE d IN user_directors
 
     // Shared composers
-    OPTIONAL MATCH (rec)<-[:RELATES_TO {type:'COMPOSED_MUSIC_FOR'}]-(c)
+    OPTIONAL MATCH (rec)<-[:COMPOSED_SCORE_FOR]-(c)
     WHERE c IN user_composers
 
     // Shared other collaborators
-    OPTIONAL MATCH (rec)<-[rto_rec:RELATES_TO]-(o)
-    WHERE o IN user_other_people AND rto_rec.type IN user_other_roles
+    OPTIONAL MATCH (rec)<-[rto_rec]-(o)
+    WHERE o IN user_other_people AND type(rto_rec) IN user_other_roles
 
     // Scoring & result
     WITH rec,
-        COLLECT(DISTINCT g.name) AS shared_genres,
+        COLLECT(DISTINCT g.type) AS shared_genres,
         COLLECT(DISTINCT a.name) AS shared_actors,
         COLLECT(DISTINCT d.name) AS shared_directors,
         COLLECT(DISTINCT c.name) AS shared_composers,
-        COLLECT(DISTINCT [o.name, rto_rec.type]) AS shared_others,
+        COLLECT(DISTINCT [o.name, type(rto_rec)]) AS shared_others,
         rec.averageRating AS rec_rating,
         rec.numVotes AS rec_votes,
         rec.runtimeMinutes AS rec_runtime,
@@ -190,7 +191,7 @@ def display_recommendations(recommendations):
 
         # Info
         html_parts.append(f"<p style='margin:2px 0;'><strong>Runtime:</strong> {rec['rec_runtime']} mins</p>")
-        html_parts.append(f"<p style='margin:2px 0;'><strong>Avg Rating:</strong> {rec['rec_rating']}/10 ⭐ | <strong>Votes:</strong> {rec['rec_votes']:,}</p>")
+        html_parts.append(f"<p style='margin:2px 0;'><strong>Avg Rating:</strong> {round(rec['rec_rating'], 2)}/10 ⭐ | <strong>Votes:</strong> {rec['rec_votes']:,}</p>")
         html_parts.append(f"<p style='margin:2px 0;'><strong>Recommendation Score:</strong> <span style='color:#ffd700;'>{rec['total_score']:.2f}</span></p>")
 
         # Explanation Dropdown
