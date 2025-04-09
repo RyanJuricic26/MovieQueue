@@ -20,7 +20,7 @@ st.markdown("""
 ### Your Personalized Movie Recommendation System
 MovieQueue helps you:
 
-- 🎯 Discover movies you'll love, powered by **Neo4j Graph Database**.
+- 🎯 Discover movies you'll love, powered by **Neo4j's Graph Database**.
 - ⭐ Rate movies and improve your future recommendations.
 - 📊 Track your movie-watching history with analytics.
 - 🧑‍💻 Share your activity and see what your friends are watching.
