@@ -6,11 +6,11 @@ This ETL script loads movie, people, and relationship data into the MovieQueue N
 
 ## ✅ What it does
 
-1. Filters the top **1000 movies per genre** (including "Adult" treated as a genre)
+1. Filters the top **250 movies per genre** (including "Adult" treated as a genre)
 2. Automatically creates:
    - Movie nodes with genre relationships
    - People nodes linked only to the filtered movies
-   - Relationship CSVs (`ACTED_IN.csv`, `DIRECTED.csv`, etc.)
+   - People -> Movie Relationships (`[r:ACTED_IN]`, `[r:DIRECTED]`, etc.)
    - Loads these relationships into the Neo4j graph
 3. Single-command ETL pipeline
 4. Displays terminal progress with `tqdm`
@@ -20,6 +20,7 @@ This ETL script loads movie, people, and relationship data into the MovieQueue N
 ## 📂 Required Input Files (in `/Data/Raw Data/`):
 
 - `title.basics.tsv`
+- `title.ratings.tsv`
 - `title.principals.tsv`
 - `name.basics.tsv`
 
@@ -36,7 +37,7 @@ python -m ETL.MovieQueueETL
 
 ## 🟣 Notes
 
-- All relationship CSVs are automatically generated to `/Data/Relationships/`
+- All relationships are dervied from the principals dataset, specifically the job and category columns
 - Top movies are selected based on `numVotes`
 - `isAdult=1` is treated as an additional genre labeled `Adult`
 
@@ -44,12 +45,12 @@ python -m ETL.MovieQueueETL
 
 ## ⚙️ Configuration
 
-Optional configuration will soon be moved to an `etl_config.py` file.
-For now, you can adjust directly inside `etl_full.py`:
+Configuration has been moved to `etl_config.py`.
 
+Ex: 
 ```python
 BATCH_SIZE = 100
-TOP_K = 1000
+TOP_K = 250
 ```
 
 ---
@@ -70,9 +71,6 @@ pip install pandas tqdm neo4j
 
 ## 👀 Output Example
 
-- `/Data/Relationships/ACTED_IN.csv`
-- `/Data/Relationships/DIRECTED.csv`
-- `/Data/Relationships/EDITED.csv`
-- ... (all relationships discovered automatically)
+- There is no output file, the output is the data being loaded into the Graph Database.
 
 ---
