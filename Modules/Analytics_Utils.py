@@ -13,17 +13,22 @@ def safe_bar_chart(df, index_col, value_col, title="", theme=CUSTOM_THEME):
         st.subheader(title)
 
         df_sorted = df.sort_values(by=index_col).reset_index(drop=True)
-        df_sorted[index_col] = df_sorted[index_col].astype(str)  # ✅ Force categorical
-        df_sorted[value_col] = df_sorted[value_col].map(lambda x: f"{x:.2f}" if pd.notna(x) else "N/A")
+        df_sorted[index_col] = df_sorted[index_col].astype(str)
+
+        # Keep original numeric y-values
+        df_sorted["value_num"] = pd.to_numeric(df_sorted[value_col], errors="coerce")
+
+        # Create formatted display values for labels
+        df_sorted["value_label"] = df_sorted["value_num"].map(lambda x: f"{x:.2f}" if pd.notna(x) else "N/A")
 
         fig = px.bar(
             df_sorted,
             x=index_col,
-            y=value_col,
-            text=value_col,
+            y="value_num",              # ✅ Use numeric values for plotting
+            text="value_label",         # ✅ Use formatted strings for display
             color=index_col,
             color_discrete_sequence=theme["color_sequence"],
-            labels={index_col: index_col.capitalize(), value_col: value_col.capitalize()},
+            labels={index_col: index_col.capitalize(), "value_num": value_col.capitalize()},
             template=theme["template"]
         )
 
