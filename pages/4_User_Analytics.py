@@ -3,7 +3,7 @@ import plotly.express as px
 from Modules.Menu import global_sidebar
 from Modules.InitializeSessionStates import init_session_state
 from Modules.GetAnalytics import get_analytics
-from Modules.Analytics_Utils import safe_bar_chart, safe_metric, safe_hist_chart
+from Modules.Analytics_Utils import safe_bar_chart, safe_metric
 
 st.set_page_config(page_title="User Analytics", page_icon="📊")
 
@@ -36,7 +36,7 @@ def show():
         st.subheader("⭐ How You Rate Movies")
 
         st.caption("From low to high – where do your most common ratings land?")
-        safe_hist_chart(rating_dist_df, "rating", "count")
+        safe_bar_chart(rating_dist_df, "rating", "count")
     else:
         st.info("You haven’t rated any movies yet!")
 
