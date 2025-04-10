@@ -10,30 +10,62 @@ st.set_page_config(page_title="User Analytics", page_icon="📊")
 
 
 def show():
-    st.title("🎬 User Analytics")
+    st.title("📊 Your Movie Taste in Data")
 
-    user = st.session_state.username
+    user = st.session_state.get("username", None)
     
-    if user is None:
+    if not user:
         st.warning("You must be logged in to view analytics.")
         st.stop()
 
-   
-    total_ratings, avg_rating, rating_dist_df, genre_df = get_analytics(user)
+    st.markdown(f"Welcome, **{user}**! Here’s what your movie watching habits reveal about you... 🎥📈")
 
-    st.header("General Stats")
-    safe_metric("Total Ratings", total_ratings)
-    safe_metric("Average Rating", avg_rating)
+    # Get analytics data
+    total_ratings, avg_rating, rating_dist_df, genre_df, most_disagreed = get_analytics(user)
 
-    st.header("Rating Distribution")
+    # 🎯 Summary stats
+    st.subheader("🎯 Your Stats at a Glance")
+    col1, col2 = st.columns(2)
+    with col1:
+        safe_metric("🎬 Total Ratings", total_ratings)
+    with col2:
+        safe_metric("⭐ Average Rating", f"{avg_rating:.2f}" if avg_rating else "N/A")
+
+    # 📊 Rating Distribution
     if not rating_dist_df.empty:
-        st.bar_chart(rating_dist_df.set_index("rating")["count"])
+        st.subheader("⭐ How You Rate Movies")
+
+        st.caption("From low to high – where do your most common ratings land?")
+        safe_bar_chart(rating_dist_df, "rating", "count")
     else:
-        st.info("No ratings yet.")
+        st.info("You haven’t rated any movies yet!")
 
-    safe_bar_chart(genre_df, "genre", "count", "Most Rated Genres")
-    safe_bar_chart(genre_df, "genre", "avg_rating", "Average Rating by Genre")
+    # 🎭 Genre Breakdown
+    if not genre_df.empty:
+        st.subheader("🎭 Your Favorite Genres")
 
+        st.caption("Genres you've watched most often:")
+        safe_bar_chart(genre_df, "genre", "count", "Most Watched Genres")
+
+        st.caption("And the genres you tend to rate highest:")
+        safe_bar_chart(genre_df, "genre", "avg_rating", "Average Rating by Genre")
+    else:
+        st.info("Genre data will appear once you’ve rated some movies!")
+
+    # 🧐 Rating Disagreement Insight
+    if most_disagreed:
+        st.subheader("🤔 Where You Disagreed Most")
+
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            st.markdown(f"**{most_disagreed['title']}** ({most_disagreed['year']})")
+            st.caption("You saw it very differently from the rest of the world.")
+        with col2:
+            st.metric("Your Rating", most_disagreed["user_rating"])
+            st.metric("Avg Rating", f"{most_disagreed['avg_rating']:.2f}")
+            st.metric("Disparity", f"{most_disagreed['diff']:.2f}")
+    else:
+        st.info("No rating disparity info yet.")
 
 init_session_state()
 

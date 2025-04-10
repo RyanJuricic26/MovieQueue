@@ -5,12 +5,13 @@ import streamlit as st
 role_map = {
     "SHOT": "Cinematographer",
     "EDITED": "Editor",
-    "CASTED": "Casting Director",
+    "CAST": "Casting Director",
     "PRODUCED": "Producer",
-    "WRITTEN": "Writer",
-    "DESIGNED_PRODUCTION_FOR": "Production Designer",
+    "WROTE": "Writer",
+    "DESIGNED PRODUCTION": "Production Designer",
     "FEATURED_IN_ARCHIVE_SOUND": "Archive Sound Contributor",
-    "FEATURED_IN_ARCHIVE_FOOTAGE": "Archive Footage Contributor"
+    "FEATURED_IN_ARCHIVE_FOOTAGE": "Archive Footage Contributor",
+
 }
 
 
@@ -22,77 +23,77 @@ def get_recommendations(user, genres):
     MATCH (u:User {username: $user})-[r:RATED]->(m:Movie)
     WHERE r.rating >= 8
 
-    // Collect user collaborators separately
+    // Collect user collaborators
     OPTIONAL MATCH (m)<-[:ACTED_IN]-(ua:Person)
     OPTIONAL MATCH (m)<-[:DIRECTED]-(ud:Person)
     OPTIONAL MATCH (m)<-[:COMPOSED_SCORE_FOR]-(uc:Person)
     OPTIONAL MATCH (m)<-[rel]-(uo:Person)
     WHERE type(rel) IN ['PRODUCED', 'EDITED', 'SHOT', 'CAST', 'DESIGNED_PRODUCTION', 'ANIMATED', 'WROTE']
 
-    // Separate collections
-    WITH u, 
-        COLLECT(DISTINCT ua) AS user_actors,
-        COLLECT(DISTINCT ud) AS user_directors,
-        COLLECT(DISTINCT uc) AS user_composers,
-        COLLECT(DISTINCT uo) AS user_other_people,
-        COLLECT(DISTINCT type(rel)) AS user_other_roles
+    WITH u,
+         COLLECT(DISTINCT ua) AS user_actors,
+         COLLECT(DISTINCT ud) AS user_directors,
+         COLLECT(DISTINCT uc) AS user_composers,
+         COLLECT(DISTINCT uo) AS user_other_people,
+         COLLECT(DISTINCT type(rel)) AS user_other_roles
 
-    // Candidate recommended movies
-    MATCH (rec:Movie)-[:HAS_GENRE]->(g2:Genre)
-    WHERE g2.type IN $genres
-    AND NOT EXISTS {
-        MATCH (u)-[:RATED]->(rec)
-    }
+    // Candidate movies (genre filter, but not based on user's history)
+    MATCH (rec:Movie)
+    WHERE NOT EXISTS { MATCH (u)-[:RATED]->(rec) }
+      AND EXISTS {
+          MATCH (rec)-[:HAS_GENRE]->(g2:Genre)
+          WHERE g2.type IN $genres
+      }
 
-    // Shared genres
-    OPTIONAL MATCH (rec)-[:HAS_GENRE]->(g:Genre)
-
-    // Shared actors
+    // Match shared collaborators and genres
     OPTIONAL MATCH (rec)<-[:ACTED_IN]-(a)
     WHERE a IN user_actors
-
-    // Shared directors
     OPTIONAL MATCH (rec)<-[:DIRECTED]-(d)
     WHERE d IN user_directors
-
-    // Shared composers
     OPTIONAL MATCH (rec)<-[:COMPOSED_SCORE_FOR]-(c)
     WHERE c IN user_composers
-
-    // Shared other collaborators
     OPTIONAL MATCH (rec)<-[rto_rec]-(o)
     WHERE o IN user_other_people AND type(rto_rec) IN user_other_roles
 
-    // Scoring & result
-    WITH rec,
-        COLLECT(DISTINCT g.type) AS shared_genres,
-        COLLECT(DISTINCT a.name) AS shared_actors,
-        COLLECT(DISTINCT d.name) AS shared_directors,
-        COLLECT(DISTINCT c.name) AS shared_composers,
-        COLLECT(DISTINCT [o.name, type(rto_rec)]) AS shared_others,
-        rec.averageRating AS rec_rating,
-        rec.numVotes AS rec_votes,
-        rec.runtimeMinutes AS rec_runtime,
-        rec.startYear AS rec_year
+    // Collect genres for scoring and display
+    OPTIONAL MATCH (rec)-[:HAS_GENRE]->(g:Genre)
+    WHERE g.type IN $genres
+    OPTIONAL MATCH (rec)-[:HAS_GENRE]->(all_g:Genre)
 
-    WITH rec, shared_genres, shared_actors, shared_directors, shared_composers, shared_others, rec_rating, rec_votes, rec_runtime, rec_year,
-        SIZE(shared_genres) * 2 + SIZE(shared_actors) * 4 + SIZE(shared_directors) * 3 + SIZE(shared_composers) * 2 + SIZE(shared_others) * 1 +
-        log(1 + rec_votes) * 2 + rec_rating * 2 AS total_score
+    WITH rec,
+         COLLECT(DISTINCT g.type) AS shared_genres,
+         COLLECT(DISTINCT all_g.type) AS all_genres,
+         COLLECT(DISTINCT a.name) AS shared_actors,
+         COLLECT(DISTINCT d.name) AS shared_directors,
+         COLLECT(DISTINCT c.name) AS shared_composers,
+         COLLECT(DISTINCT [o.name, type(rto_rec)]) AS shared_others,
+         rec.averageRating AS rec_rating,
+         rec.numVotes AS rec_votes,
+         rec.runtimeMinutes AS rec_runtime,
+         rec.startYear AS rec_year
+
+    WITH rec, shared_genres, all_genres, shared_actors, shared_directors, shared_composers, shared_others,
+         rec_rating, rec_votes, rec_runtime, rec_year,
+         SIZE(shared_genres) * 2 + SIZE(shared_actors) * 4 + SIZE(shared_directors) * 3 +
+         SIZE(shared_composers) * 2 + SIZE(shared_others) * 1 +
+         log(1 + rec_votes) * 2 + rec_rating * 2 AS total_score
 
     ORDER BY total_score DESC
     LIMIT 10
 
     RETURN rec.primaryTitle AS recommendation,
-        total_score,
-        shared_genres,
-        shared_actors,
-        shared_directors,
-        shared_composers,
-        shared_others,
-        rec_rating,
-        rec_votes,
-        rec_runtime,
-        rec_year
+           rec.id AS id,
+           all_genres,
+           shared_genres,
+           shared_actors,
+           shared_directors,
+           shared_composers,
+           shared_others,
+           rec_rating,
+           rec_votes,
+           rec_runtime,
+           rec_year,
+           total_score
     """
 
     recommendations = db.run_query(query, {"user": user, "genres": genres})
