@@ -11,7 +11,7 @@ role_map = {
     "DESIGNED PRODUCTION": "Production Designer",
     "FEATURED_IN_ARCHIVE_SOUND": "Archive Sound Contributor",
     "FEATURED_IN_ARCHIVE_FOOTAGE": "Archive Footage Contributor",
-
+    "Designed Production": "Production Designer"
 }
 
 
