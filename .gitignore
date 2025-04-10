@@ -10,8 +10,6 @@ __pycache__/
 ETL/ARCHIVE
 Data/
 
-# Streamlit stuff
-.streamlit/
 
 # OS files
 .DS_Store
