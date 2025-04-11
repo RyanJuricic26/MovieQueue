@@ -72,11 +72,12 @@ def get_recommendations(user, genres):
          rec.runtimeMinutes AS rec_runtime,
          rec.startYear AS rec_year
 
-    WITH rec, shared_genres, all_genres, shared_actors, shared_directors, shared_composers, shared_others,
-         rec_rating, rec_votes, rec_runtime, rec_year,
-         SIZE(shared_genres) * 2 + SIZE(shared_actors) * 4 + SIZE(shared_directors) * 3 +
-         SIZE(shared_composers) * 2 + SIZE(shared_others) * 1 +
-         log(1 + rec_votes) * 2 + rec_rating * 2 AS total_score
+    WITH rec, shared_genres, all_genres, shared_actors, shared_directors, 
+        shared_composers, shared_others, rec_rating, rec_votes, rec_runtime, 
+        rec_year, SIZE(shared_genres) * 2 + SIZE(shared_actors) * 4 + 
+        SIZE(shared_directors) * 3 + SIZE(shared_composers) * 2 + 
+        SIZE(shared_others) * 1 + log(1 + rec_votes) * 2 + 
+        rec_rating * 2 AS total_score
 
     ORDER BY total_score DESC
     LIMIT 10
