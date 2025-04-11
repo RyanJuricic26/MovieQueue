@@ -21,63 +21,71 @@ def get_recommendations(user, genres):
     
     query = """
     MATCH (u:User {username: $user})-[r:RATED]->(m:Movie)
-    WHERE r.rating >= 8
+    WITH u, m, r.rating / 5.0 AS rating_weight
 
-    // Collect user collaborators
-    OPTIONAL MATCH (m)<-[:ACTED_IN]-(ua:Person)
-    OPTIONAL MATCH (m)<-[:DIRECTED]-(ud:Person)
-    OPTIONAL MATCH (m)<-[:COMPOSED_SCORE_FOR]-(uc:Person)
-    OPTIONAL MATCH (m)<-[rel]-(uo:Person)
-    WHERE type(rel) IN ['PRODUCED', 'EDITED', 'SHOT', 'CAST', 'DESIGNED_PRODUCTION', 'ANIMATED', 'WROTE']
+    OPTIONAL MATCH (m)-[:HAS_GENRE]->(g:Genre)
+    WITH u, m, rating_weight, collect(DISTINCT g.type) AS user_genres
 
-    WITH u,
-         COLLECT(DISTINCT ua) AS user_actors,
-         COLLECT(DISTINCT ud) AS user_directors,
-         COLLECT(DISTINCT uc) AS user_composers,
-         COLLECT(DISTINCT uo) AS user_other_people,
-         COLLECT(DISTINCT type(rel)) AS user_other_roles
+    OPTIONAL MATCH (m)<-[rel]-(p:Person)
+    WHERE type(rel) IN [
+        'ACTED_IN', 'DIRECTED', 'WROTE', 'PRODUCED', 'COMPOSED_SCORE_FOR',
+        'EDITED', 'SHOT', 'CAST', 'DESIGNED_PRODUCTION', 'ANIMATED'
+    ]
+    WITH u, user_genres, p.name AS person_name, type(rel) AS role, rating_weight
+    WHERE person_name IS NOT NULL
+    WITH u, user_genres, role, person_name, SUM(rating_weight) AS influence
+    WITH u, user_genres, collect({person: person_name, role: role, weight: influence}) AS weighted_collaborators
 
-    // Candidate movies (genre filter, but not based on user's history)
-    MATCH (rec:Movie)
-    WHERE NOT EXISTS { MATCH (u)-[:RATED]->(rec) }
-      AND EXISTS {
-          MATCH (rec)-[:HAS_GENRE]->(g2:Genre)
-          WHERE g2.type IN $genres
-      }
+    MATCH (rec:Movie)-[:HAS_GENRE]->(rg:Genre)
+    WHERE rg.type IN $genres AND NOT EXISTS { MATCH (u)-[:RATED]->(rec) }
 
-    // Match shared collaborators and genres
-    OPTIONAL MATCH (rec)<-[:ACTED_IN]-(a)
-    WHERE a IN user_actors
-    OPTIONAL MATCH (rec)<-[:DIRECTED]-(d)
-    WHERE d IN user_directors
-    OPTIONAL MATCH (rec)<-[:COMPOSED_SCORE_FOR]-(c)
-    WHERE c IN user_composers
-    OPTIONAL MATCH (rec)<-[rto_rec]-(o)
-    WHERE o IN user_other_people AND type(rto_rec) IN user_other_roles
+    OPTIONAL MATCH (rec)-[:HAS_GENRE]->(rg_all:Genre)
+    OPTIONAL MATCH (rec)<-[rel2]-(collab:Person)
+    WHERE type(rel2) IN [
+        'ACTED_IN', 'DIRECTED', 'WROTE', 'PRODUCED', 'COMPOSED_SCORE_FOR',
+        'EDITED', 'SHOT', 'CAST', 'DESIGNED_PRODUCTION', 'ANIMATED'
+    ]
 
-    // Collect genres for scoring and display
-    OPTIONAL MATCH (rec)-[:HAS_GENRE]->(g:Genre)
-    WHERE g.type IN $genres
-    OPTIONAL MATCH (rec)-[:HAS_GENRE]->(all_g:Genre)
-
-    WITH rec,
-         COLLECT(DISTINCT g.type) AS shared_genres,
-         COLLECT(DISTINCT all_g.type) AS all_genres,
-         COLLECT(DISTINCT a.name) AS shared_actors,
-         COLLECT(DISTINCT d.name) AS shared_directors,
-         COLLECT(DISTINCT c.name) AS shared_composers,
-         COLLECT(DISTINCT [o.name, type(rto_rec)]) AS shared_others,
+    WITH rec, collect(DISTINCT rg_all.type) AS all_genres,
+         collect(DISTINCT rg_all.type) FILTER (WHERE rg_all.type IN $genres) AS shared_genres,
+         collect(DISTINCT {name: collab.name, role: type(rel2)}) AS rec_collaborators,
          rec.averageRating AS rec_rating,
          rec.numVotes AS rec_votes,
          rec.runtimeMinutes AS rec_runtime,
-         rec.startYear AS rec_year
+         rec.startYear AS rec_year,
+         u, weighted_collaborators
 
-    WITH rec, shared_genres, all_genres, shared_actors, shared_directors, 
-        shared_composers, shared_others, rec_rating, rec_votes, rec_runtime, 
-        rec_year, SIZE(shared_genres) * 2 + SIZE(shared_actors) * 4 + 
-        SIZE(shared_directors) * 3 + SIZE(shared_composers) * 2 + 
-        SIZE(shared_others) * 1 + log(1 + rec_votes) * 2 + 
-        rec_rating * 2 AS total_score
+    WITH rec, all_genres, shared_genres, rec_rating, rec_votes, rec_runtime, rec_year,
+         [collab IN rec_collaborators |
+            REDUCE(s = 0.0,
+                x IN [x IN weighted_collaborators WHERE x.person = collab.name AND x.role = collab.role] |
+                s + (
+                    CASE collab.role
+                        WHEN 'ACTED_IN' THEN 4.0
+                        WHEN 'DIRECTED' THEN 3.0
+                        WHEN 'WROTE' THEN 2.0
+                        WHEN 'PRODUCED' THEN 2.0
+                        WHEN 'COMPOSED_SCORE_FOR' THEN 2.0
+                        ELSE 1.0
+                    END * x.weight
+                )
+            )
+         ] AS collaborator_scores,
+         [collab.name WHERE collab.role = 'ACTED_IN'] AS shared_actors,
+         [collab.name WHERE collab.role = 'DIRECTED'] AS shared_directors,
+         [collab.name WHERE collab.role = 'COMPOSED_SCORE_FOR'] AS shared_composers,
+         [ [collab.name, collab.role] WHERE collab.role IN ['WROTE','PRODUCED','EDITED','SHOT','CAST','DESIGNED_PRODUCTION','ANIMATED'] ] AS shared_others
+
+    WITH rec, all_genres, shared_genres, shared_actors, shared_directors, shared_composers, shared_others,
+         rec_rating, rec_votes, rec_runtime, rec_year,
+         REDUCE(total = 0.0, s IN collaborator_scores | total + s) AS total_collab_score,
+         log(1 + rec_votes) * 1.0 AS popularity_score,
+         rec_rating * 1.5 AS quality_score
+
+    WITH rec, all_genres, shared_genres, shared_actors, shared_directors, shared_composers, shared_others,
+         rec_rating, rec_votes, rec_runtime, rec_year,
+         total_collab_score, popularity_score, quality_score,
+         SIZE(shared_genres) * 1.0 + total_collab_score + popularity_score + quality_score AS total_score
 
     ORDER BY total_score DESC
     LIMIT 10
@@ -193,7 +201,7 @@ def display_recommendations(recommendations):
 
         # Info
         html_parts.append(f"<p style='margin:2px 0;'><strong>Runtime:</strong> {rec['rec_runtime']} mins</p>")
-        html_parts.append(f"<p style='margin:2px 0;'><strong>Avg Rating:</strong> {round(rec['rec_rating'], 2)}/10 ⭐ | <strong>Votes:</strong> {rec['rec_votes']:,}</p>")
+        html_parts.append(f"<p style='margin:2px 0;'><strong>Avg Rating:</strong> {round(rec['rec_rating']/2, 2)}/5 ⭐ | <strong>Votes:</strong> {rec['rec_votes']:,}</p>")
         html_parts.append(f"<p style='margin:2px 0;'><strong>Recommendation Score:</strong> <span style='color:#ffd700;'>{rec['total_score']:.2f}</span></p>")
 
         # Explanation Dropdown

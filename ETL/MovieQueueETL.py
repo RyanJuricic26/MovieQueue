@@ -11,6 +11,40 @@ from Database.Neo4j_Connection import Connect
 os.makedirs(REL_OUTPUT_DIR, exist_ok=True)
 
 # ==============================
+# CREATE NODE CONSTRAINTS
+# ==============================
+def setup_constraints(db):
+    print("[STEP 0] Setting up database...")
+
+    with db.driver.session() as session:
+        session.run("""
+        CREATE CONSTRAINT movie_tconst_unique IF NOT EXISTS
+        FOR (m:Movie)
+        REQUIRE m.tconst IS UNIQUE
+        """)
+
+        session.run("""
+        CREATE CONSTRAINT genre_type_unique IF NOT EXISTS
+        FOR (g:Genre)
+        REQUIRE g.type IS UNIQUE
+        """)
+
+        session.run("""
+        CREATE CONSTRAINT person_nconst_unique IF NOT EXISTS
+        FOR (p:Person)
+        REQUIRE p.nconst IS UNIQUE
+        """)
+
+        session.run("""
+        CREATE CONSTRAINT platform_name_unique IF NOT EXISTS
+        FOR (s:StreamingPlatform)
+        REQUIRE s.name IS UNIQUE
+        """)
+
+    print(f"[INFO] Finished Setting Up Database.")
+
+
+# ==============================
 # READ TSV FILES
 # ==============================
 def read_data(path, dtype):
@@ -32,15 +66,15 @@ def filter_top_movies(movie_csv, rating_csv, DTYPE_BASICS, DTYPE_RATINGS):
     merged_data = merged_data.dropna(subset=['numVotes'])
     merged_data['numVotes'] = merged_data['numVotes'].astype(int)
 
+    # Convert genres to list
     merged_data['genres'] = merged_data['genres'].fillna("").apply(lambda x: x.split(",") if x else [])
-    
-    # Treat isAdult as a genre
-    merged_data.loc[merged_data['isAdult'] == 1, 'genres'] = merged_data.loc[merged_data['isAdult'] == 1, 'genres'].apply(lambda g: g + ['Adult'])
 
+    # Find top movies BEFORE exploding
     df_exploded = merged_data.explode('genres')
+    top_by_genre = df_exploded.groupby('genres', group_keys=False).apply(lambda x: x.nlargest(TOP_K, 'numVotes'))
 
-    top_movies = df_exploded.groupby('genres', group_keys=False).apply(lambda x: x.nlargest(TOP_K, 'numVotes'))
-    top_movies = top_movies.drop_duplicates('tconst')
+    # Then, get the full original rows (with all genres) for selected movies
+    top_movies = merged_data[merged_data['tconst'].isin(top_by_genre['tconst'])]
 
     print(f"[INFO] Filtered down to {len(top_movies)} top movies.")
     return top_movies
@@ -199,6 +233,8 @@ if __name__ == "__main__":
     print("Starting ETL Script...")
 
     db = Connect()
+
+    setup_constraints(db)
 
     df_movies = filter_top_movies(MOVIE_DATA_PATH, RATINGS_DATA_PATH, DTYPE_BASICS, DTYPE_RATINGS)
     upload_movies(df_movies, db)

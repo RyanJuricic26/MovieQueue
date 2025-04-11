@@ -20,7 +20,7 @@ def show():
     ]
 
     # ---------- Star Rating Choices ----------
-    stars = [f"{i/2} ⭐" for i in range(1, 21)]  # 0.5 to 10.0
+    stars = [f"{i/2} ⭐" for i in range(1, 11)]  # 0.5 to 5
 
     # ---------- UI ----------
     st.title("⭐ Rate a Movie")
@@ -53,7 +53,7 @@ def show():
         with st.container():
             st.markdown("---")
             st.subheader(f"{movie['title']} ({movie['year']})")
-            st.markdown(f"**Runtime:** {movie['runtime']} mins | **Avg Rating:** {round(movie['rating'], 2)}/10")
+            st.markdown(f"**Runtime:** {movie['runtime']} mins | **Avg Rating:** {round(movie['rating']/2, 2)}/10")
             genre_tags = " ".join([
                 f"<span style='background:#FF5C5C; color:white; padding:4px 8px; border-radius:8px; font-size:0.8em; margin-right:5px;'>{g}</span>"
                 for g in movie['genres']
@@ -65,7 +65,7 @@ def show():
             existing = db.run_query(existing_rating_query, {"user": st.session_state.username, "tconst": movie['tconst']})
 
             if existing:
-                st.warning(f"You have already rated this movie: {existing[0]['rating']}/10")
+                st.warning(f"You have already rated this movie: {existing[0]['rating']}/5")
 
             # ---------- Watch Details ----------
             st.subheader("Watch Information")
@@ -99,8 +99,7 @@ def show():
                     })
 
                 st.success("✅ Rating submitted!")
-                if st.button("Rate Another Movie"):
-                    st.experimental_rerun()
+                st.rerun()
 
     else:
         st.info("Please select a movie to continue.")
