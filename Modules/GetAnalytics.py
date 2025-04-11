@@ -12,7 +12,7 @@ def get_analytics(user):
         "avg_rating": "MATCH (u:User {username: $user})-[r:RATED]->(m:Movie) RETURN avg(r.rating) AS avg_rating",
         "rating_dist": "MATCH (u:User {username: $user})-[r:RATED]->(m:Movie) RETURN r.rating AS rating, count(*) AS count ORDER BY rating",
         "genre_dist": "MATCH (u:User {username: $user})-[r:RATED]->(m:Movie)-[:HAS_GENRE]->(g:Genre) RETURN g.type AS genre, count(*) AS count, avg(r.rating) AS avg_rating ORDER BY count DESC",
-        "largest_disparity": "MATCH (u:User {username: $user})-[r:RATED]->(m:Movie) WHERE m.averageRating IS NOT NULL RETURN m.primaryTitle AS title, m.startYear AS year, r.rating AS user_rating, m.averageRating AS avg_rating, ABS(r.rating - m.averageRating) AS diff ORDER BY diff DESC LIMIT 1"
+        "largest_disparity": "MATCH (u:User {username: $user})-[r:RATED]->(m:Movie) WHERE m.averageRating IS NOT NULL RETURN m.primaryTitle AS title, m.startYear AS year, r.rating AS user_rating, m.averageRating / 2 AS avg_rating, ABS(r.rating - (m.averageRating / 2)) AS diff ORDER BY diff DESC LIMIT 1"
     }
 
     results = {key: db.run_query(query, params) for key, query in queries.items()}

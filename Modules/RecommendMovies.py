@@ -48,7 +48,9 @@ def get_recommendations(user, genres):
 
     WITH rec, collect(DISTINCT rg_all.type) AS all_genres,
         [genre IN collect(DISTINCT rg_all.type) WHERE genre IN $genres] AS shared_genres,
-         collect(DISTINCT {name: collab.name, role: type(rel2)}) AS rec_collaborators,
+         [x IN collect(DISTINCT {name: collab.name, role: type(rel2)})
+            WHERE ANY(w IN weighted_collaborators WHERE w.person = x.name AND w.role = x.role)
+            ] AS rec_collaborators,
          rec.averageRating AS rec_rating,
          rec.numVotes AS rec_votes,
          rec.runtimeMinutes AS rec_runtime,
@@ -71,11 +73,11 @@ def get_recommendations(user, genres):
                 )
             )
          ] AS collaborator_scores,
-         [collab.name WHERE collab.role = 'ACTED_IN'] AS shared_actors,
-         [collab.name WHERE collab.role = 'DIRECTED'] AS shared_directors,
-         [collab.name WHERE collab.role = 'COMPOSED_SCORE_FOR'] AS shared_composers,
-         [ [collab.name, collab.role] WHERE collab.role IN ['WROTE','PRODUCED','EDITED','SHOT','CAST','DESIGNED_PRODUCTION','ANIMATED'] ] AS shared_others
-
+            [x IN rec_collaborators WHERE x.role = 'ACTED_IN' | x.name] AS shared_actors,
+            [x IN rec_collaborators WHERE x.role = 'DIRECTED' | x.name] AS shared_directors,
+            [x IN rec_collaborators WHERE x.role = 'COMPOSED_SCORE_FOR' | x.name] AS shared_composers,
+            [x IN rec_collaborators WHERE x.role IN ['WROTE','PRODUCED','EDITED','SHOT','CAST','DESIGNED_PRODUCTION','ANIMATED'] | [x.name, x.role]] AS shared_others            
+    
     WITH rec, all_genres, shared_genres, shared_actors, shared_directors, shared_composers, shared_others,
          rec_rating, rec_votes, rec_runtime, rec_year,
          REDUCE(total = 0.0, s IN collaborator_scores | total + s) AS total_collab_score,
