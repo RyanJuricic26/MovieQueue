@@ -47,7 +47,7 @@ def get_recommendations(user, genres):
     ]
 
     WITH rec, collect(DISTINCT rg_all.type) AS all_genres,
-         collect(DISTINCT rg_all.type) FILTER (WHERE rg_all.type IN $genres) AS shared_genres,
+        [genre IN collect(DISTINCT rg_all.type) WHERE genre IN $genres] AS shared_genres,
          collect(DISTINCT {name: collab.name, role: type(rel2)}) AS rec_collaborators,
          rec.averageRating AS rec_rating,
          rec.numVotes AS rec_votes,
