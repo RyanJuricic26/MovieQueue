@@ -53,7 +53,7 @@ def show():
         with st.container():
             st.markdown("---")
             st.subheader(f"{movie['title']} ({movie['year']})")
-            st.markdown(f"**Runtime:** {movie['runtime']} mins | **Avg Rating:** {round(movie['rating']/2, 2)}/10")
+            st.markdown(f"**Runtime:** {movie['runtime']} mins | **Avg Rating:** {round(movie['rating']/2, 2)}/5")
             genre_tags = " ".join([
                 f"<span style='background:#FF5C5C; color:white; padding:4px 8px; border-radius:8px; font-size:0.8em; margin-right:5px;'>{g}</span>"
                 for g in movie['genres']

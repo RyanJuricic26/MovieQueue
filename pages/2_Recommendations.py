@@ -29,9 +29,12 @@ def show():
     selected_genres = st.multiselect("🎯 Select Genres to Include in Recommendations:", genre_list)
 
     if selected_genres:
-        raw_recommendations = get_recommendations(st.session_state.username, selected_genres)
-        formatted = format_recommendations(raw_recommendations)
-        display_recommendations(formatted)
+        raw_recommendations, memory_issue = get_recommendations(st.session_state.username, selected_genres)
+        # formatted = format_recommendations(raw_recommendations)
+        if not raw_recommendations and not memory_issue:
+            st.info("No recommendations found. Try rating more movies or selecting more genres.")
+        elif raw_recommendations:
+            display_recommendations(raw_recommendations)
 
 init_session_state()    
 
