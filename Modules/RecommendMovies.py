@@ -16,51 +16,54 @@ role_map = {
 }
 
 
-
 def get_top_movie_ids(user, genres):
     db = Connect()
 
     query = """
-    // STEP 1: Get user-weighted collaborators
+    // STEP 1: Get user's weighted collaborators
     MATCH (u:User {username: $user})-[r:RATED]->(m:Movie)
     WITH u, m, r.rating / 5.0 AS rating_weight
 
-    OPTIONAL MATCH (m)<-[rel]-(p:Person)
+    MATCH (m)<-[rel]-(p:Person)
     WHERE type(rel) IN [
         'ACTED_IN', 'DIRECTED', 'WROTE', 'PRODUCED', 'COMPOSED_SCORE_FOR',
         'EDITED', 'SHOT', 'CAST', 'DESIGNED_PRODUCTION', 'ANIMATED'
     ]
     WITH u, p.name AS person_name, type(rel) AS role, rating_weight
-    WHERE person_name IS NOT NULL
     WITH u, role, person_name, SUM(rating_weight) AS influence
     WITH u, collect({person: person_name, role: role, weight: influence}) AS weighted_collaborators
 
-    // STEP 2: Match candidate movies by genre (no UNWIND!)
-    MATCH (rec:Movie)-[:HAS_GENRE]->(g:Genre)
+    // STEP 2: Use those collaborators to find candidate movies
+    UNWIND weighted_collaborators AS wc
+    MATCH (p:Person {name: wc.person})-[rel2]->(rec:Movie)
+    WHERE type(rel2) = wc.role
+
+    // STEP 3: Filter those movies by genre and not previously rated
+    MATCH (rec)-[:HAS_GENRE]->(g:Genre)
     WHERE g.type IN $genres AND NOT EXISTS {
         MATCH (u)-[:RATED]->(rec)
     }
 
-    // STEP 3: Limit to top 100 most voted candidates to reduce memory load
+    // STEP 4: De-duplicate and limit early
     WITH DISTINCT rec, weighted_collaborators
     ORDER BY rec.numVotes DESC
-    LIMIT 100
+    LIMIT 75
 
-    // STEP 4: Match collaborators for those candidates
-    OPTIONAL MATCH (rec)<-[rel2]-(collab:Person)
-    WHERE type(rel2) IN [
+    // STEP 5: Match known collaborators for scoring
+    OPTIONAL MATCH (rec)<-[rel3]-(collab:Person)
+    WHERE type(rel3) IN [
         'ACTED_IN', 'DIRECTED', 'WROTE', 'PRODUCED', 'COMPOSED_SCORE_FOR',
         'EDITED', 'SHOT', 'CAST', 'DESIGNED_PRODUCTION', 'ANIMATED'
     ]
 
     WITH rec, weighted_collaborators,
-         [x IN collect(DISTINCT {name: collab.name, role: type(rel2)})
+         [x IN collect(DISTINCT {name: collab.name, role: type(rel3)})
           WHERE ANY(w IN weighted_collaborators WHERE w.person = x.name AND w.role = x.role)
          ] AS rec_collaborators,
          rec.averageRating AS rec_rating,
          rec.numVotes AS rec_votes
 
-    // STEP 5: Score based on known collaborators
+    // STEP 6: Scoring
     WITH rec, weighted_collaborators, rec_rating, rec_votes,
          [collab IN rec_collaborators |
             REDUCE(s = 0.0,
@@ -98,10 +101,10 @@ def get_top_movie_ids(user, genres):
 
     except TransientError as e:
         if "MemoryPoolOutOfMemoryError" in str(e):
-            st.error("🚨 Too many genres selected! Try selecting fewer genres to get recommendations.")
+            st.error("🚨 Too many matching movies for your selected genres. Try narrowing your genre selection.")
             return [], True
         else:
-            raise  # let other errors bubble up normally
+            raise
 
 def get_movie_details(ids, collab_lookup):
     db = Connect()
