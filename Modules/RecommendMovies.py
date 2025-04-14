@@ -44,7 +44,7 @@ def get_top_movie_ids(user, genres):
     // STEP 3: Limit to top 500 most voted candidates to reduce memory load
     WITH DISTINCT rec, weighted_collaborators
     ORDER BY rec.numVotes DESC
-    LIMIT 500
+    LIMIT 300
 
     // STEP 4: Match collaborators for those candidates
     OPTIONAL MATCH (rec)<-[rel2]-(collab:Person)
