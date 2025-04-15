@@ -16,11 +16,10 @@ role_map = {
 }
 
 
-def get_top_movie_ids(user, genres):
+def get_candidate_movie_ids(user, genres):
     db = Connect()
 
     query = """
-    // STEP 1: Get user's weighted collaborators
     MATCH (u:User {username: $user})-[r:RATED]->(m:Movie)
     WITH u, m, r.rating / 5.0 AS rating_weight
 
@@ -29,76 +28,30 @@ def get_top_movie_ids(user, genres):
         'ACTED_IN', 'DIRECTED', 'WROTE', 'PRODUCED', 'COMPOSED_SCORE_FOR',
         'EDITED', 'SHOT', 'CAST', 'DESIGNED_PRODUCTION', 'ANIMATED'
     ]
+
     WITH u, p.name AS person_name, type(rel) AS role, rating_weight
     WITH u, role, person_name, SUM(rating_weight) AS influence
-    WITH u, collect({person: person_name, role: role, weight: influence}) AS weighted_collaborators
 
-    // STEP 2: Use those collaborators to find candidate movies
-    UNWIND weighted_collaborators AS wc
-    MATCH (p:Person {name: wc.person})-[rel2]->(rec:Movie)
-    WHERE type(rel2) = wc.role
+    WITH u, collect({person: person_name, role: role, weight: influence}) AS collaborators
 
-    // STEP 3: Filter those movies by genre and not previously rated
+    UNWIND collaborators AS wc
+    MATCH (p:Person {name: wc.person})-[rel]->(rec:Movie)
+    WHERE type(rel) = wc.role
+
     MATCH (rec)-[:HAS_GENRE]->(g:Genre)
     WHERE g.type IN $genres AND NOT EXISTS {
         MATCH (u)-[:RATED]->(rec)
     }
 
-    // STEP 4: De-duplicate and limit early
-    WITH DISTINCT rec, weighted_collaborators
-    ORDER BY rec.numVotes DESC
+    WITH DISTINCT rec, collaborators
+    WITH rec, collaborators ORDER BY rec.numVotes DESC
     LIMIT 75
-
-    // STEP 5: Match known collaborators for scoring
-    OPTIONAL MATCH (rec)<-[rel3]-(collab:Person)
-    WHERE type(rel3) IN [
-        'ACTED_IN', 'DIRECTED', 'WROTE', 'PRODUCED', 'COMPOSED_SCORE_FOR',
-        'EDITED', 'SHOT', 'CAST', 'DESIGNED_PRODUCTION', 'ANIMATED'
-    ]
-
-    WITH rec, weighted_collaborators,
-         [x IN collect(DISTINCT {name: collab.name, role: type(rel3)})
-          WHERE ANY(w IN weighted_collaborators WHERE w.person = x.name AND w.role = x.role)
-         ] AS rec_collaborators,
-         rec.averageRating AS rec_rating,
-         rec.numVotes AS rec_votes
-
-    // STEP 6: Scoring
-    WITH rec, weighted_collaborators, rec_rating, rec_votes,
-         [collab IN rec_collaborators |
-            REDUCE(s = 0.0,
-                x IN [x IN weighted_collaborators WHERE x.person = collab.name AND x.role = collab.role] |
-                s + (
-                    CASE collab.role
-                        WHEN 'ACTED_IN' THEN 4.0
-                        WHEN 'DIRECTED' THEN 3.0
-                        WHEN 'WROTE' THEN 2.0
-                        WHEN 'PRODUCED' THEN 2.0
-                        WHEN 'COMPOSED_SCORE_FOR' THEN 2.0
-                        ELSE 1.0
-                    END * x.weight
-                )
-            )
-         ] AS collaborator_scores
-
-    WITH rec, weighted_collaborators,
-         REDUCE(total = 0.0, s IN collaborator_scores | total + s) AS total_collab_score,
-         log(1 + rec_votes) * 1.0 AS popularity_score,
-         rec_rating * 1.5 AS quality_score
-
-    WITH rec, total_collab_score, popularity_score, quality_score, weighted_collaborators,
-         total_collab_score + popularity_score + quality_score AS total_score
-
-    ORDER BY total_score DESC
-    LIMIT 25
-
-    RETURN rec.tconst AS id, total_score AS score, weighted_collaborators
+    RETURN rec.tconst AS id, collaborators
     """
 
     try:
         results = db.run_query(query, {"user": user, "genres": genres})
-        return [{"id": r["id"], "score": r["score"], "collaborators": r["weighted_collaborators"]} for r in results], False
-
+        return [{"id": r["id"], "collaborators": r["collaborators"]} for r in results], False
     except TransientError as e:
         if "MemoryPoolOutOfMemoryError" in str(e):
             st.error("🚨 Too many matching movies for your selected genres. Try narrowing your genre selection.")
@@ -106,7 +59,46 @@ def get_top_movie_ids(user, genres):
         else:
             raise
 
-def get_movie_details(ids, collab_lookup):
+
+def get_scored_movies(ids, collaborators):
+    db = Connect()
+
+    query = """
+    UNWIND $ids AS movieId
+    MATCH (rec:Movie {tconst: movieId})
+    WITH rec, rec.averageRating AS rec_rating, rec.numVotes AS rec_votes
+
+    UNWIND $collaborators AS wc
+    MATCH (p:Person {name: wc.person})-[rel]->(rec)
+    WHERE type(rel) = wc.role
+
+    WITH rec, wc, type(rel) AS role, rec_rating, rec_votes
+    WITH rec, rec_rating, rec_votes,
+         SUM(
+            CASE role
+                WHEN 'ACTED_IN' THEN 4.0
+                WHEN 'DIRECTED' THEN 3.0
+                WHEN 'WROTE' THEN 2.0
+                WHEN 'PRODUCED' THEN 2.0
+                WHEN 'COMPOSED_SCORE_FOR' THEN 2.0
+                ELSE 1.0
+            END * wc.weight
+         ) AS total_collab_score
+
+    WITH rec,
+         total_collab_score,
+         log(1 + rec.numVotes) AS popularity_score,
+         rec.averageRating * 1.5 AS quality_score,
+         total_collab_score + log(1 + rec.numVotes) + rec.averageRating * 1.5 AS total_score
+
+    RETURN rec.tconst AS id, total_score
+    ORDER BY total_score DESC
+    """
+
+    results = db.run_query(query, {"ids": ids, "collaborators": collaborators})
+    return [{"id": r["id"], "score": r["total_score"]} for r in results]
+
+def get_movie_details(ids):    
     db = Connect()
 
     query = """
@@ -136,13 +128,16 @@ def get_movie_details(ids, collab_lookup):
 
     results = db.run_query(query, {"ids": ids})
 
-    filtered = []
+    return results
+  
+def format_recommendations(details, score_lookup, collab_lookup, genres):
+    formatted_recommendations = []
 
-    for rec in results:
+    for rec in details:
         rec = dict(rec)
-        movie_id = rec["id"]
-        seen_collabs = collab_lookup.get(movie_id, [])
+        rec["total_score"] = score_lookup.get(rec["id"], 0.0)
 
+        seen_collabs = collab_lookup.get(rec["id"], [])
         seen_set = {(c["person"], c["role"]) for c in seen_collabs}
 
         # Filter down to shared people only
@@ -151,55 +146,27 @@ def get_movie_details(ids, collab_lookup):
         rec["shared_composers"] = [name for name in rec["shared_composers"] if (name, "COMPOSED_SCORE_FOR") in seen_set]
         rec["shared_others"] = [pair for pair in rec["shared_others"] if tuple(pair) in seen_set]
 
-        filtered.append(rec)
-
-    return filtered
-
-def format_recommendations(details, score_lookup, genres):
-    formatted_recommendations = []
-
-    for rec in details:
-        rec = dict(rec)
-        rec["total_score"] = score_lookup.get(rec["id"], 0.0)
-
-        explanation = []
-        if rec['all_genres']:
-            shared_genres = list(set(rec['all_genres']) & set(genres))
-            if shared_genres:
-                explanation.append(f"Shares {len(shared_genres)} genre(s): {', '.join(shared_genres)}")
-        if rec['shared_actors']:
-            explanation.append(f"Has {len(rec['shared_actors'])} actor(s) you know: {', '.join(rec['shared_actors'])}")
-        if rec['shared_directors']:
-            explanation.append(f"Shares director(s): {', '.join(rec['shared_directors'])}")
-        if rec['shared_composers']:
-            explanation.append(f"Shares composer(s): {', '.join(rec['shared_composers'])}")
-
-        # ------- Group other collaborators by role -------
-        primary_people = set(rec['shared_actors']) | set(rec['shared_directors']) | set(rec['shared_composers'])
-        unique_others = [f"{name} ({role})" for name, role in rec['shared_others'] if name not in primary_people]
-
-        if unique_others:
-            explanation.append(f"Includes other familiar collaborators: {', '.join(sorted(unique_others))}")
-
-        rec['explanation'] = "<br>".join(explanation) if explanation else "Has matching genres or collaborators."
         formatted_recommendations.append(rec)
+
 
     return formatted_recommendations, False
 
+
 def get_recommendations(user, genres):
-    top_movies, memory_issue = get_top_movie_ids(user, genres)
-    
-    if memory_issue or not top_movies:
-        return [], memory_issue
+    ids_and_collabs, memory_error = get_candidate_movie_ids(user, genres)
+    if memory_error or not ids_and_collabs:
+        return [], memory_error
 
-    ids = [m["id"] for m in top_movies]
-    score_lookup = {m["id"]: m["score"] for m in top_movies}
-    collab_lookup = {m["id"]: m["collaborators"] for m in top_movies}
+    ids = [r["id"] for r in ids_and_collabs]
+    collaborators = ids_and_collabs[0]["collaborators"] if ids_and_collabs else []
 
-    details = get_movie_details(ids, collab_lookup)
+    scored = get_scored_movies(ids, collaborators)
+    score_lookup = {r["id"]: r["score"] for r in scored}
+    collab_lookup = {r["id"]: collaborators for r in scored}  # assuming same collabs for each
 
-    return format_recommendations(details, score_lookup, genres)
-
+    details = get_movie_details([r["id"] for r in scored])
+    formatted, _ = format_recommendations(details, score_lookup, collab_lookup, genres)
+    return formatted, False
     
 def display_recommendations(recommendations):
     if not recommendations:
@@ -215,7 +182,7 @@ def display_recommendations(recommendations):
         html_parts.append("<div style='background:#1e1e1e;padding:20px;border-radius:16px;border:1px solid #444;margin-bottom:25px;box-shadow:0 4px 12px rgba(0,0,0,0.3);color:white;font-family:sans-serif;'>")
 
         # Title
-        html_parts.append(f"<h2 style='margin-bottom:8px;'>🎬 {rec['recommendation']} <span style='font-size:0.7em; color:gray;'>({rec['rec_year']})</span></h2>")
+        html_parts.append(f"<h2 style='margin-bottom:8px;'>🎬 {rec.get('recommendation')} <span style='font-size:0.7em; color:gray;'>({rec.get('rec_year')})</span></h2>")
 
         # genre tags
         all_genres = rec.get('all_genres') or rec.get('shared_genres') or []
@@ -227,10 +194,10 @@ def display_recommendations(recommendations):
         html_parts.append(f"<div style='margin-bottom:8px;'>{genre_tags}</div>")
 
         # Info
-        html_parts.append(f"<p style='margin:2px 0;'><strong>Runtime:</strong> {rec['rec_runtime']} mins</p>")
-        html_parts.append(f"<p style='margin:2px 0;'><strong>Avg Rating:</strong> {round(rec['rec_rating']/2, 2)}/5 ⭐ | <strong>Votes:</strong> {rec['rec_votes']:,}</p>")
-        html_parts.append(f"<p style='margin:2px 0;'><strong>Recommendation Score:</strong> <span style='color:#ffd700;'>{rec['total_score']:.2f}</span></p>")
-
+        html_parts.append(f"<p style='margin:2px 0;'><strong>Runtime:</strong> {rec.get('rec_runtime')} mins</p>")
+        html_parts.append(f"<p style='margin:2px 0;'><strong>Avg Rating:</strong> {round(rec.get('rec_rating')/2, 2)}/5 ⭐ | <strong>Votes:</strong> {rec.get('rec_votes'):,}</p>")
+        html_parts.append(f"<p style='margin:2px 0;'><strong>Recommendation Score:</strong> <span style='color:#ffd700;'>{rec.get('total_score', 0.0):.2f}</span></p>")
+        
         # Explanation Dropdown
         explanation_html = []
         explanation_html.append("""
@@ -240,13 +207,13 @@ def display_recommendations(recommendations):
         """)
 
         if rec['shared_actors']:
-            explanation_html.append(f"<p style='margin:3px 0; font-weight:600;'>🎭 Familiar Actors:</p><p style='margin-left:12px; color:#ccc;'>{', '.join(rec['shared_actors'])}</p>")
+            explanation_html.append(f"<p style='margin:3px 0; font-weight:600;'>🎭 Familiar Actors:</p><p style='margin-left:12px; color:#ccc;'>{', '.join(rec.get('shared_actors'))}</p>")
 
         if rec['shared_directors']:
-            explanation_html.append(f"<p style='margin:3px 0; font-weight:600;'>🎬 Director(s):</p><p style='margin-left:12px; color:#ccc;'>{', '.join(rec['shared_directors'])}</p>")
+            explanation_html.append(f"<p style='margin:3px 0; font-weight:600;'>🎬 Director(s):</p><p style='margin-left:12px; color:#ccc;'>{', '.join(rec.get('shared_directors'))}</p>")
 
         if rec['shared_composers']:
-            explanation_html.append(f"<p style='margin:3px 0; font-weight:600;'>🎼 Composer(s):</p><p style='margin-left:12px; color:#ccc;'>{', '.join(rec['shared_composers'])}</p>")
+            explanation_html.append(f"<p style='margin:3px 0; font-weight:600;'>🎼 Composer(s):</p><p style='margin-left:12px; color:#ccc;'>{', '.join(rec.get('shared_composers'))}</p>")
 
         # Group other collaborators (excluding composers)
         crew_by_role = defaultdict(list)
