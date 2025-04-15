@@ -9,12 +9,13 @@ from Modules.auth import login_blocker
 # protect the page
 login_blocker()
 
-st.set_page_config(page_title="Home", page_icon="🏡")
+st.set_page_config(page_title="Recommendations", page_icon="📽")
 
 
 def show():
-    st.title("📽 MovieQueue Home")
+    st.title("📽 MovieQueue Recommendations")
     st.write(f"Welcome back, **{st.session_state.username}**!")
+    st.write(f"To improve movie recommendations, rate at least 5 movies!")
 
     genre_query = """
     MATCH (g:Genre)
